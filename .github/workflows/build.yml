@@ -1,0 +1,65 @@
+name: Build Yantra Pro APK (Debug + Release)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create local.properties
+        run: |
+          echo "weatherAPIkey=\"dummy-key\"" > local.properties
+          echo "backupPassword=\"dummy-password\"" >> local.properties
+          echo "crashReportEndpoint=\"https://example.com/crash\"" >> local.properties
+          echo "crashApiKey=\"dummy\"" >> local.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build Pro Debug APK (direkt installierbar)
+        run: ./gradlew assembleProDebug --stacktrace
+
+      - name: Build Pro Release APK (optimiert, kleiner)
+        run: ./gradlew assembleProRelease --stacktrace
+
+      - name: Sign Release APK mit Debug-Key (für private Installation)
+        run: |
+          # Debug Keystore von Android SDK nutzen
+          DEBUG_KEYSTORE=$ANDROID_HOME/debug.keystore
+          if [ ! -f "$DEBUG_KEYSTORE" ]; then
+            keytool -genkey -v -keystore $DEBUG_KEYSTORE -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, S=Debug, C=US"
+          fi
+          # Release APKs signieren
+          for apk in app/build/outputs/apk/pro/release/*.apk; do
+            echo "Signiere $apk"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks $DEBUG_KEYSTORE --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey "$apk" || $ANDROID_HOME/build-tools/33.0.1/apksigner sign --ks $DEBUG_KEYSTORE --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey "$apk" || echo "Apksigner Version nicht gefunden, suche..."
+            find $ANDROID_HOME/build-tools -name apksigner | head -1 | xargs -I {} {} sign --ks $DEBUG_KEYSTORE --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey "$apk" || true
+          done
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yantra-pro-debug-apk
+          path: app/build/outputs/apk/pro/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yantra-pro-release-apk
+          path: app/build/outputs/apk/pro/release/*.apk
+          if-no-files-found: error
