@@ -1,4 +1,4 @@
-name: Build Yantra Pro APK (Fixed)
+name: Build Yantra Pro APK (Fixed v2)
 
 on:
   workflow_dispatch:
@@ -20,13 +20,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Fix broken gradle.properties (remove local java.home)
+        run: |
+          echo "=== BEFORE ==="
+          cat gradle.properties || echo "no root gradle.properties"
+          # Lösche die Zeile mit dem lokalen Pfad /home/gtm/...
+          sed -i '/org.gradle.java.home/d' gradle.properties || true
+          sed -i '/java.home/d' gradle.properties || true
+          # Falls es auch im .gradle Ordner liegt
+          if [ -f ~/.gradle/gradle.properties ]; then
+            sed -i '/org.gradle.java.home/d' ~/.gradle/gradle.properties || true
+          fi
+          echo "=== AFTER ==="
+          cat gradle.properties || echo "no root gradle.properties"
+
       - name: Create local.properties
         run: |
           echo "weatherAPIkey=\"dummy-key\"" > local.properties
           echo "backupPassword=\"dummy-password\"" >> local.properties
           echo "crashReportEndpoint=\"https://example.com/crash\"" >> local.properties
           echo "crashApiKey=\"dummy\"" >> local.properties
-          cat local.properties
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -35,10 +48,10 @@ jobs:
         run: yes | sdkmanager --licenses || true
 
       - name: Build Pro Debug APK
-        run: ./gradlew assembleProDebug --stacktrace
+        run: ./gradlew assembleProDebug --stacktrace -Dorg.gradle.java.home=$JAVA_HOME
 
       - name: Build Pro Release APK
-        run: ./gradlew assembleProRelease --stacktrace
+        run: ./gradlew assembleProRelease --stacktrace -Dorg.gradle.java.home=$JAVA_HOME
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
